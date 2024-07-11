@@ -12,12 +12,14 @@ import type { OpenAPIObject } from 'openapi3-ts';
 import type { CollectionDefinition } from 'postman-collection';
 
 export async function getHttpOperationsFromSpec(specFilePathOrObject: string | object): Promise<IHttpOperation[]> {
+  // yaml dosyamı runner.ts den aldı
   const prismVersion = require('../../package.json').version;
   const httpResolverOpts: HTTPResolverOptions = {
     headers: {
       'User-Agent': `PrismMockServer/${prismVersion} (${os.type()} ${os.arch()} ${os.release()})`,
     },
   };
+  console.log(specFilePathOrObject);
   const result = decycle(
     await new $RefParser().dereference(specFilePathOrObject, { resolve: { http: httpResolverOpts } })
   );
@@ -29,6 +31,8 @@ export async function getHttpOperationsFromSpec(specFilePathOrObject: string | o
   else throw new Error('Unsupported document format');
 
   operations.forEach((op, i, ops) => {
+    console.log('OPS');
+    console.log(op);
     ops[i] = bundleTarget({
       document: {
         ...result,

@@ -36,7 +36,7 @@ const createMultiProcessPrism: CreatePrism = async options => {
   if (cluster.isMaster) {
     cluster.setupMaster({ silent: true });
 
-    signale.await({ prefix: chalk.bgWhiteBright.black('[CLI]'), message: 'Starting Prism…' });
+    signale.await({ prefix: chalk.bgWhiteBright.black('[CLI]'), message: '…' });
 
     const worker = cluster.fork();
 
@@ -57,8 +57,8 @@ const createMultiProcessPrism: CreatePrism = async options => {
 };
 
 const createSingleProcessPrism: CreatePrism = options => {
-  signale.await({ prefix: chalk.bgWhiteBright.black('[CLI]'), message: 'Starting Prism…' });
-
+  signale.await({ prefix: chalk.bgWhiteBright.black('[CLI]'), message: '…' });
+  console.log('createSingleProcessPrism');
   const logStream = new PassThrough();
   const logInstance = createLogger('CLI', { ...cliSpecificLoggerOptions, level: options.verboseLevel }, logStream);
   pipeOutputToSignale(logStream);

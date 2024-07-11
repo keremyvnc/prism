@@ -80,7 +80,7 @@ function parseRequestBody(request: IncomingMessage) {
 
 export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServerOpts): IPrismHttpServer => {
   const { components, config } = opts;
-
+  console.log('createServer');
   const handler: MicriHandler = async (request, reply) => {
     const { url, method, headers } = request;
 
@@ -190,13 +190,14 @@ export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServe
         () => opts.cors,
         (req: IncomingMessage, res: ServerResponse) => {
           setCommonCORSHeaders(req.headers, res);
-
+          console.log('a');
           if (!!req.headers['origin'] && !!req.headers['access-control-request-method']) {
             // This is a preflight request, so we'll respond with the appropriate CORS response
             res.setHeader(
               'Access-Control-Allow-Methods',
               req.headers['access-control-request-method'] || 'GET,DELETE,HEAD,PATCH,POST,PUT,OPTIONS'
             );
+            console.log('b');
 
             res.setHeader('Vary', 'origin');
 
@@ -221,10 +222,12 @@ export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServe
 
   return {
     get prism() {
+      console.log('prism');
       return prism;
     },
 
     get logger() {
+      console.log('logger');
       return components.logger;
     },
 
@@ -244,6 +247,7 @@ export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServe
       new Promise((resolve, reject) => {
         server.once('error', e => reject(e.message));
         server.listen(port, ...args, (err: unknown) => {
+          console.log('server.listen');
           if (err) return reject(err);
           return resolve(addressInfoToString(server.address()));
         });
