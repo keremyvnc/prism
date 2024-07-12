@@ -77,13 +77,23 @@ function parseRequestBody(request: IncomingMessage) {
     return text(request, { limit: '10mb' });
   }
 }
+async function addLatency(duration: number, startTime: [number, number]): Promise<void> {
+  const [seconds, nanoseconds] = process.hrtime(startTime);
+  const elapsedTime = seconds * 1000 + nanoseconds / 1e6; // Milisaniye cinsinden süre
+  const remainingTime = duration - elapsedTime;
+
+  if (remainingTime > 0) {
+    return new Promise(resolve => setTimeout(resolve, remainingTime));
+  } else {
+    return Promise.resolve();
+  }
+}
 
 export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServerOpts): IPrismHttpServer => {
   const { components, config } = opts;
-  console.log('createServer');
   const handler: MicriHandler = async (request, reply) => {
+    const startTime = process.hrtime();
     const { url, method, headers } = request;
-
     const body = await parseRequestBody(request);
 
     const { searchParams, pathname } = new URL(
@@ -109,10 +119,10 @@ export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServe
       E.map(operationSpecificConfig => ({ ...config, mock: merge(config.mock, operationSpecificConfig) }))
     );
 
-    pipe(
+    await pipe(
       TE.fromEither(requestConfig),
       TE.chain(requestConfig => prism.request(input, operations, requestConfig)),
-      TE.chainIOEitherK(response => {
+      TE.chainIOEitherK(async response => {
         const { output } = response;
 
         const inputValidationErrors = response.validations.input.map(createErrorObjectWithPrefix('request'));
@@ -148,24 +158,24 @@ export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServe
           }
         });
 
-        return IOE.fromEither(
-          E.tryCatch(() => {
-            if (output.headers) Object.entries(output.headers).forEach(([name, value]) => reply.setHeader(name, value));
+        if (output.headers) Object.entries(output.headers).forEach(([name, value]) => reply.setHeader(name, value));
 
-            send(
-              reply,
-              output.statusCode,
-              serialize(output.body, reply.getHeader('content-type') as string | undefined)
-            );
-          }, E.toError)
-        );
+        // Latency ekleyerek asenkron yap
+        await addLatency(4000, startTime);
+
+        send(reply, output.statusCode, serialize(output.body, reply.getHeader('content-type') as string | undefined));
+
+        return IOE.right(undefined);
       }),
-      TE.mapLeft((e: Error & { status?: number; additional?: { headers?: Dictionary<string> } }) => {
+      TE.mapLeft(async (e: Error & { status?: number; additional?: { headers?: Dictionary<string> } }) => {
         if (!reply.writableEnded) {
           reply.setHeader('content-type', 'application/problem+json');
 
           if (e.additional && e.additional.headers)
             Object.entries(e.additional.headers).forEach(([name, value]) => reply.setHeader(name, value));
+
+          // Latency ekleyerek asenkron yap
+          await addLatency(4000, startTime);
 
           send(reply, e.status || 500, JSON.stringify(ProblemJsonError.toProblemJson(e)));
         } else {
@@ -175,6 +185,8 @@ export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServe
         components.logger.error({ input }, `Request terminated with error: ${e}`);
       })
     )();
+
+    components.logger.info(`Request processed`);
   };
 
   function setCommonCORSHeaders(incomingHeaders: IncomingHttpHeaders, res: ServerResponse) {
@@ -190,14 +202,12 @@ export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServe
         () => opts.cors,
         (req: IncomingMessage, res: ServerResponse) => {
           setCommonCORSHeaders(req.headers, res);
-          console.log('a');
           if (!!req.headers['origin'] && !!req.headers['access-control-request-method']) {
             // This is a preflight request, so we'll respond with the appropriate CORS response
             res.setHeader(
               'Access-Control-Allow-Methods',
               req.headers['access-control-request-method'] || 'GET,DELETE,HEAD,PATCH,POST,PUT,OPTIONS'
             );
-            console.log('b');
 
             res.setHeader('Vary', 'origin');
 
@@ -247,7 +257,7 @@ export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServe
       new Promise((resolve, reject) => {
         server.once('error', e => reject(e.message));
         server.listen(port, ...args, (err: unknown) => {
-          console.log('server.listen');
+          console.log('server.ts createServer server.listen');
           if (err) return reject(err);
           return resolve(addressInfoToString(server.address()));
         });

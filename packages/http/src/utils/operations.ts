@@ -19,12 +19,12 @@ export async function getHttpOperationsFromSpec(specFilePathOrObject: string | o
       'User-Agent': `PrismMockServer/${prismVersion} (${os.type()} ${os.arch()} ${os.release()})`,
     },
   };
-  console.log(specFilePathOrObject);
   const result = decycle(
-    await new $RefParser().dereference(specFilePathOrObject, { resolve: { http: httpResolverOpts } })
+    await new $RefParser().dereference(specFilePathOrObject, { resolve: { http: httpResolverOpts } }) // buradan baştaki bilgileri çekiyoruz
   );
+  getLatencyFromFromSpec(specFilePathOrObject);
 
-  let operations: IHttpOperation[] = [];
+  let operations: IHttpOperation[] = []; // buradan bu işlem hangi open api versiyonuna uygunsa onu alıyoruz
   if (isOpenAPI2(result)) operations = transformOas2Operations(result);
   else if (isOpenAPI3(result)) operations = transformOas3Operations(result);
   else if (isPostmanCollection(result)) operations = transformPostmanCollectionOperations(result);
@@ -32,7 +32,7 @@ export async function getHttpOperationsFromSpec(specFilePathOrObject: string | o
 
   operations.forEach((op, i, ops) => {
     console.log('OPS');
-    console.log(op);
+    //console.log(op);
     ops[i] = bundleTarget({
       document: {
         ...result,
@@ -41,9 +41,24 @@ export async function getHttpOperationsFromSpec(specFilePathOrObject: string | o
       path: '#/__target__',
       cloneDocument: false,
     });
+    console.log(ops[i]);
   });
 
   return operations;
+}
+
+export async function getLatencyFromFromSpec(specFilePathOrObject: string | object): Promise<IHttpOperation[]> {
+  const prismVersion = require('../../package.json').version;
+  const httpResolverOpts: HTTPResolverOptions = {
+    headers: {
+      'User-Agent': `PrismMockServer/${prismVersion} (${os.type()} ${os.arch()} ${os.release()})`,
+    },
+  };
+  const result = decycle(
+    await new $RefParser().dereference(specFilePathOrObject, { resolve: { http: httpResolverOpts } })
+  );
+  console.log(result.latency);
+  return result;
 }
 
 function isOpenAPI2(document: unknown): document is Spec {

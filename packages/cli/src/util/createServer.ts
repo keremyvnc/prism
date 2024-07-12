@@ -15,6 +15,7 @@ import { getHttpOperationsFromSpec } from '@stoplight/prism-http';
 import { createExamplePath } from './paths';
 import { attachTagsToParamsValues, transformPathParamsValues } from './colorizer';
 import { configureExtensionsUserProvided } from '../extensions';
+import { getLatencyFromFromSpec } from 'http/src/utils/operations';
 
 type PrismLogDescriptor = pino.LogDescriptor & {
   name: keyof typeof LOG_COLOR_MAP;
@@ -57,6 +58,8 @@ const createMultiProcessPrism: CreatePrism = async options => {
 };
 
 const createSingleProcessPrism: CreatePrism = options => {
+  console.log(options); // burası çok önemli dosya da burdan alınıyor
+  options.port = 8080;
   signale.await({ prefix: chalk.bgWhiteBright.black('[CLI]'), message: '…' });
   console.log('createSingleProcessPrism');
   const logStream = new PassThrough();
@@ -75,7 +78,6 @@ async function createPrismServerWithLogger(options: CreateBaseServerOptions, log
     ['fillProperties']: options.jsonSchemaFakerFillProperties,
   };
   await configureExtensionsUserProvided(options.document, jsonSchemaFakerCliParams);
-
   if (operations.length === 0) {
     throw new Error('No operations found in the current file.');
   }

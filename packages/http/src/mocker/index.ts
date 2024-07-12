@@ -280,6 +280,7 @@ function negotiateResponse(
   if (errors && A.isNonEmpty(input.validations)) {
     return createInvalidInputResponse(input.validations, resource.responses, mockConfig);
   } else {
+    console.log('adammm');
     return pipe(
       withLogger(logger => {
         warnings && warnings.forEach(warn => logger.warn({ name: 'VALIDATOR' }, warn.message));
