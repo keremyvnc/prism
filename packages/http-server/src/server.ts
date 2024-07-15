@@ -97,8 +97,8 @@ export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServe
     const body = await parseRequestBody(request);
 
     const { searchParams, pathname } = new URL(
-      url!, // url can't be empty for HTTP request
-      'http://example.com' // needed because URL can't handle relative URLs
+      url!, // URL boş olamaz
+      'http://example.com' // URL nesnesi ile ilgili mutlak URL gereklidir
     );
 
     const input = {
@@ -122,51 +122,60 @@ export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServe
     await pipe(
       TE.fromEither(requestConfig),
       TE.chain(requestConfig => prism.request(input, operations, requestConfig)),
-      TE.chainIOEitherK(async response => {
-        const { output } = response;
+      TE.chain(response =>
+        TE.tryCatch(
+          async () => {
+            const { output } = response;
 
-        const inputValidationErrors = response.validations.input.map(createErrorObjectWithPrefix('request'));
-        const outputValidationErrors = response.validations.output.map(createErrorObjectWithPrefix('response'));
-        const inputOutputValidationErrors = inputValidationErrors.concat(outputValidationErrors);
+            const inputValidationErrors = response.validations.input.map(createErrorObjectWithPrefix('request'));
+            const outputValidationErrors = response.validations.output.map(createErrorObjectWithPrefix('response'));
+            const inputOutputValidationErrors = inputValidationErrors.concat(outputValidationErrors);
 
-        if (inputOutputValidationErrors.length > 0) {
-          addViolationHeader(reply, inputOutputValidationErrors);
+            if (inputOutputValidationErrors.length > 0) {
+              addViolationHeader(reply, inputOutputValidationErrors);
 
-          const errorViolations = outputValidationErrors.filter(
-            v => v.severity === DiagnosticSeverity[DiagnosticSeverity.Error]
-          );
+              const errorViolations = outputValidationErrors.filter(
+                v => v.severity === DiagnosticSeverity[DiagnosticSeverity.Error]
+              );
 
-          if (opts.config.errors && errorViolations.length > 0) {
-            return IOE.left(
-              ProblemJsonError.fromTemplate(
-                VIOLATIONS,
-                'Your request/response is not valid and the --errors flag is set, so Prism is generating this error for you.',
-                { validation: errorViolations }
-              )
+              if (opts.config.errors && errorViolations.length > 0) {
+                return IOE.left(
+                  ProblemJsonError.fromTemplate(
+                    VIOLATIONS,
+                    'Your request/response is not valid and the --errors flag is set, so Prism is generating this error for you.',
+                    { validation: errorViolations }
+                  )
+                );
+              }
+            }
+
+            // inputOutputValidationErrors.forEach(validation => {
+            //   const message = `Violation: ${validation.location.join('.') || ''} ${validation.message}`;
+            //   if (validation.severity === DiagnosticSeverity[DiagnosticSeverity.Error]) {
+            //     components.logger.error({ name: 'VALIDATOR' }, message);
+            //   } else if (validation.severity === DiagnosticSeverity.Warning) {
+            //     components.logger.warn({ name: 'VALIDATOR' }, message);
+            //   } else {
+            //     components.logger.info({ name: 'VALIDATOR' }, message);
+            //   }
+            // });
+
+            if (output.headers) Object.entries(output.headers).forEach(([name, value]) => reply.setHeader(name, value));
+
+            // Latency ekleyerek asenkron yap
+            await addLatency(5000, startTime);
+
+            send(
+              reply,
+              output.statusCode,
+              serialize(output.body, reply.getHeader('content-type') as string | undefined)
             );
-          }
-        }
 
-        inputOutputValidationErrors.forEach(validation => {
-          const message = `Violation: ${validation.location.join('.') || ''} ${validation.message}`;
-          if (validation.severity === DiagnosticSeverity[DiagnosticSeverity.Error]) {
-            components.logger.error({ name: 'VALIDATOR' }, message);
-          } else if (validation.severity === DiagnosticSeverity[DiagnosticSeverity.Warning]) {
-            components.logger.warn({ name: 'VALIDATOR' }, message);
-          } else {
-            components.logger.info({ name: 'VALIDATOR' }, message);
-          }
-        });
-
-        if (output.headers) Object.entries(output.headers).forEach(([name, value]) => reply.setHeader(name, value));
-
-        // Latency ekleyerek asenkron yap
-        await addLatency(4000, startTime);
-
-        send(reply, output.statusCode, serialize(output.body, reply.getHeader('content-type') as string | undefined));
-
-        return IOE.right(undefined);
-      }),
+            return undefined;
+          },
+          reason => new Error(String(reason))
+        )
+      ),
       TE.mapLeft(async (e: Error & { status?: number; additional?: { headers?: Dictionary<string> } }) => {
         if (!reply.writableEnded) {
           reply.setHeader('content-type', 'application/problem+json');
