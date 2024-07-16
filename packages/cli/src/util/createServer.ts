@@ -16,6 +16,7 @@ import { createExamplePath } from './paths';
 import { attachTagsToParamsValues, transformPathParamsValues } from './colorizer';
 import { configureExtensionsUserProvided } from '../extensions';
 import { getLatencyFromFromSpec } from 'http/src/utils/operations';
+import { time } from 'console';
 
 type PrismLogDescriptor = pino.LogDescriptor & {
   name: keyof typeof LOG_COLOR_MAP;
@@ -74,6 +75,8 @@ const createSingleProcessPrism: CreatePrism = options => {
 
 async function createPrismServerWithLogger(options: CreateBaseServerOptions, logInstance: pino.Logger) {
   const operations = await getHttpOperationsFromSpec(options.document);
+  const timeout = await getLatencyFromFromSpec(options.document);
+
   const jsonSchemaFakerCliParams: { [option: string]: any } = {
     ['fillProperties']: options.jsonSchemaFakerFillProperties,
   };
@@ -101,11 +104,15 @@ async function createPrismServerWithLogger(options: CreateBaseServerOptions, log
       }
     : { ...shared, isProxy: false };
 
-  const server = createHttpServer(operations, {
-    cors: options.cors,
-    config,
-    components: { logger: logInstance.child({ name: 'HTTP SERVER' }) },
-  });
+  const server = createHttpServer(
+    operations,
+    {
+      cors: options.cors,
+      config,
+      components: { logger: logInstance.child({ name: 'HTTP SERVER' }) },
+    },
+    timeout
+  );
 
   const address = await server.listen(options.port, options.host);
   operations.forEach(resource => {

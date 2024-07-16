@@ -47,7 +47,7 @@ export async function getHttpOperationsFromSpec(specFilePathOrObject: string | o
   return operations;
 }
 
-export async function getLatencyFromFromSpec(specFilePathOrObject: string | object): Promise<IHttpOperation[]> {
+export async function getLatencyFromFromSpec(specFilePathOrObject: string | object): Promise<number> {
   const prismVersion = require('../../package.json').version;
   const httpResolverOpts: HTTPResolverOptions = {
     headers: {
@@ -57,8 +57,7 @@ export async function getLatencyFromFromSpec(specFilePathOrObject: string | obje
   const result = decycle(
     await new $RefParser().dereference(specFilePathOrObject, { resolve: { http: httpResolverOpts } })
   );
-  console.log(result.latency);
-  return result;
+  return result.latency;
 }
 
 function isOpenAPI2(document: unknown): document is Spec {

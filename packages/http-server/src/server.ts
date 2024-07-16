@@ -89,7 +89,11 @@ async function addLatency(duration: number, startTime: [number, number]): Promis
   }
 }
 
-export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServerOpts): IPrismHttpServer => {
+export const createServer = (
+  operations: IHttpOperation[],
+  opts: IPrismHttpServerOpts,
+  timeout: number
+): IPrismHttpServer => {
   const { components, config } = opts;
   const handler: MicriHandler = async (request, reply) => {
     const startTime = process.hrtime();
@@ -149,22 +153,19 @@ export const createServer = (operations: IHttpOperation[], opts: IPrismHttpServe
               }
             }
 
-            // inputOutputValidationErrors.forEach(validation => {
-            //   const message = `Violation: ${validation.location.join('.') || ''} ${validation.message}`;
-            //   if (validation.severity === DiagnosticSeverity[DiagnosticSeverity.Error]) {
-            //     components.logger.error({ name: 'VALIDATOR' }, message);
-            //   } else if (validation.severity === DiagnosticSeverity.Warning) {
-            //     components.logger.warn({ name: 'VALIDATOR' }, message);
-            //   } else {
-            //     components.logger.info({ name: 'VALIDATOR' }, message);
-            //   }
-            // });
+            inputOutputValidationErrors.forEach(validation => {
+              const message = `Violation: ${validation.location.join('.') || ''} ${validation.message}`;
+              if (validation.severity === DiagnosticSeverity[DiagnosticSeverity.Error]) {
+                components.logger.error({ name: 'VALIDATOR' }, message);
+              } else if (validation.severity === DiagnosticSeverity[DiagnosticSeverity.Warning]) {
+                components.logger.warn({ name: 'VALIDATOR' }, message);
+              } else {
+                components.logger.info({ name: 'VALIDATOR' }, message);
+              }
+            });
 
             if (output.headers) Object.entries(output.headers).forEach(([name, value]) => reply.setHeader(name, value));
-
-            // Latency ekleyerek asenkron yap
-            await addLatency(5000, startTime);
-
+            await addLatency(timeout, startTime);
             send(
               reply,
               output.statusCode,
