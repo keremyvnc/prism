@@ -11,8 +11,7 @@ import { IncomingMessage, ServerResponse, IncomingHttpHeaders } from 'http';
 import { AddressInfo } from 'net';
 import { IPrismHttpServer, IPrismHttpServerOpts } from './types';
 import { IPrismDiagnostic } from '@stoplight/prism-core';
-import { MicriHandler } from 'micri';
-import micri, { Router, json, send, text } from 'micri';
+import fastify, { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import * as typeIs from 'type-is';
 import { getHttpConfigFromRequest } from './getHttpConfigFromRequest';
 import { serialize } from './serialize';
@@ -45,7 +44,7 @@ type ValidationError = {
 };
 
 const MAX_SAFE_HEADER_LENGTH = 8 * 1024 - 100; // 8kb minus some
-function addViolationHeader(reply: ServerResponse, validationErrors: ValidationError[]) {
+function addViolationHeader(reply: FastifyReply, validationErrors: ValidationError[]) {
   if (validationErrors.length === 0) {
     return;
   }
@@ -55,10 +54,10 @@ function addViolationHeader(reply: ServerResponse, validationErrors: ValidationE
     value = `Too many violations! ${value.substring(0, MAX_SAFE_HEADER_LENGTH)}`;
   }
 
-  reply.setHeader('sl-violations', value);
+  reply.header('sl-violations', value);
 }
 
-function parseRequestBody(request: IncomingMessage) {
+function parseRequestBody(request: FastifyRequest) {
   // if no body provided then return null instead of empty string
   if (
     // If the body size is null, it means the body itself is null so the promise can resolve with a null value
@@ -68,15 +67,16 @@ function parseRequestBody(request: IncomingMessage) {
     // https://httpwg.org/specs/rfc9112.html#message.body
     (request.headers['transfer-encoding'] === undefined && request.headers['content-length'] === undefined)
   ) {
-    return Promise.resolve(null);
+    return null;
   }
 
-  if (typeIs(request, ['application/json', 'application/*+json'])) {
-    return json(request, { limit: '10mb' });
+  if (typeIs(request.raw, ['application/json', 'application/*+json'])) {
+    return request.body;
   } else {
-    return text(request, { limit: '10mb' });
+    return request.body;
   }
 }
+
 async function addLatency(duration: number, startTime: [number, number]): Promise<void> {
   const [seconds, nanoseconds] = process.hrtime(startTime);
   const elapsedTime = seconds * 1000 + nanoseconds / 1e6; // Milisaniye cinsinden süre
@@ -95,15 +95,15 @@ export const createServer = (
   timeout: number
 ): IPrismHttpServer => {
   const { components, config } = opts;
-  const handler: MicriHandler = async (request, reply) => {
+  const server: FastifyInstance = fastify();
+
+  server.addHook('preHandler', async (request, reply) => {
     const startTime = process.hrtime();
     const { url, method, headers } = request;
     const body = await parseRequestBody(request);
 
-    const { searchParams, pathname } = new URL(
-      url!, // URL boş olamaz
-      'http://example.com' // URL nesnesi ile ilgili mutlak URL gereklidir
-    );
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    const { searchParams, pathname } = new URL(url!, 'http://example.com');
 
     const input = {
       method: (method ? method.toLowerCase() : 'get') as HttpMethod,
@@ -164,13 +164,15 @@ export const createServer = (
               }
             });
 
-            if (output.headers) Object.entries(output.headers).forEach(([name, value]) => reply.setHeader(name, value));
+            if (output.headers) Object.entries(output.headers).forEach(([name, value]) => reply.header(name, value));
+
+            // Latency ekleyerek asenkron yap
             await addLatency(timeout, startTime);
-            send(
-              reply,
-              output.statusCode,
-              serialize(output.body, reply.getHeader('content-type') as string | undefined)
-            );
+
+            reply
+              .status(output.statusCode)
+              //.type(reply.getHeader('content-type') as string | undefined)
+              .send(serialize(output.body, reply.getHeader('content-type') as string | undefined));
 
             return undefined;
           },
@@ -178,18 +180,18 @@ export const createServer = (
         )
       ),
       TE.mapLeft(async (e: Error & { status?: number; additional?: { headers?: Dictionary<string> } }) => {
-        if (!reply.writableEnded) {
-          reply.setHeader('content-type', 'application/problem+json');
+        if (!reply.sent) {
+          reply.type('application/problem+json');
 
           if (e.additional && e.additional.headers)
-            Object.entries(e.additional.headers).forEach(([name, value]) => reply.setHeader(name, value));
+            Object.entries(e.additional.headers).forEach(([name, value]) => reply.header(name, value));
 
           // Latency ekleyerek asenkron yap
           await addLatency(4000, startTime);
 
-          send(reply, e.status || 500, JSON.stringify(ProblemJsonError.toProblemJson(e)));
+          reply.status(e.status || 500).send(ProblemJsonError.toProblemJson(e));
         } else {
-          reply.end();
+          reply.raw.end();
         }
 
         components.logger.error({ input }, `Request terminated with error: ${e}`);
@@ -197,51 +199,13 @@ export const createServer = (
     )();
 
     components.logger.info(`Request processed`);
-  };
-
-  function setCommonCORSHeaders(incomingHeaders: IncomingHttpHeaders, res: ServerResponse) {
-    res.setHeader('Access-Control-Allow-Origin', incomingHeaders['origin'] || '*');
-    res.setHeader('Access-Control-Allow-Headers', incomingHeaders['access-control-request-headers'] || '*');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Expose-Headers', incomingHeaders['access-control-expose-headers'] || '*');
-  }
-
-  const server = micri(
-    Router.router(
-      Router.on.options(
-        () => opts.cors,
-        (req: IncomingMessage, res: ServerResponse) => {
-          setCommonCORSHeaders(req.headers, res);
-          if (!!req.headers['origin'] && !!req.headers['access-control-request-method']) {
-            // This is a preflight request, so we'll respond with the appropriate CORS response
-            res.setHeader(
-              'Access-Control-Allow-Methods',
-              req.headers['access-control-request-method'] || 'GET,DELETE,HEAD,PATCH,POST,PUT,OPTIONS'
-            );
-
-            res.setHeader('Vary', 'origin');
-
-            // This should not be required since we're responding with a 204, which has no content by definition. However
-            // Safari does not really understand that and throws a Network Error. Explicit is better than implicit.
-            res.setHeader('Content-Length', '0');
-            return send(res, 204);
-          }
-
-          return handler(req, res);
-        }
-      ),
-      Router.otherwise((req, res, options) => {
-        if (opts.cors) setCommonCORSHeaders(req.headers, res);
-
-        return handler(req, res, options);
-      })
-    )
-  );
+  });
 
   const prism = createInstance(config, components);
 
   return {
     get prism() {
+      console.log('prism');
       return prism;
     },
 
@@ -251,23 +215,22 @@ export const createServer = (
 
     close() {
       return new Promise((resolve, reject) =>
-        server.close(error => {
-          if (error) {
-            reject(error);
-          }
-
+        server.close(() => {
           resolve();
         })
       );
     },
 
-    listen: (port: number, ...args: any[]) =>
-      new Promise((resolve, reject) => {
-        server.once('error', e => reject(e.message));
-        server.listen(port, ...args, (err: unknown) => {
-          // console.log('server.ts createServer server.listen');
+    listen: (port: number, host?: string, ...args: any[]) =>
+      new Promise<string>((resolve, reject) => {
+        const options: { port: number; host?: string } = { port };
+        if (host) {
+          options.host = host;
+        }
+
+        server.listen(options, (err: Error | null, address: string) => {
           if (err) return reject(err);
-          return resolve(addressInfoToString(server.address()));
+          return resolve(addressInfoToString(address));
         });
       }),
   };
