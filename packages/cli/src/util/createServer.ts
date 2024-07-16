@@ -112,7 +112,6 @@ async function createPrismServerWithLogger(options: CreateBaseServerOptions, log
     },
     timeout
   );
-
   const address = await server.listen(options.port, options.host);
   operations.forEach(resource => {
     const path = pipe(
