@@ -24,7 +24,6 @@ export async function createAndCallPrismInstanceWithSpec(
 ): Promise<PrismErrorResult | PrismOkResult> {
   const operations = await getHttpOperationsFromSpec(spec);
   const prism = createInstance(options, { logger });
-  console.log('createAndCallPrismInstanceWithSpec');
   const result = await pipe(prism.request(request, operations))();
   if (isRight(result)) {
     return { result: 'ok', response: result.right };

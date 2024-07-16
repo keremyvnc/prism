@@ -59,10 +59,9 @@ const createMultiProcessPrism: CreatePrism = async options => {
 };
 
 const createSingleProcessPrism: CreatePrism = options => {
-  console.log(options); // burası çok önemli dosya da burdan alınıyor
+  // console.log(options); // burası çok önemli dosya da burdan alınıyor
   options.port = 8080;
   signale.await({ prefix: chalk.bgWhiteBright.black('[CLI]'), message: '…' });
-  console.log('createSingleProcessPrism');
   const logStream = new PassThrough();
   const logInstance = createLogger('CLI', { ...cliSpecificLoggerOptions, level: options.verboseLevel }, logStream);
   pipeOutputToSignale(logStream);

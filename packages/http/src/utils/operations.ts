@@ -31,8 +31,6 @@ export async function getHttpOperationsFromSpec(specFilePathOrObject: string | o
   else throw new Error('Unsupported document format');
 
   operations.forEach((op, i, ops) => {
-    console.log('OPS');
-    //console.log(op);
     ops[i] = bundleTarget({
       document: {
         ...result,

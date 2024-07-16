@@ -98,7 +98,9 @@ export const convertAjvErrors = (
       return {
         path,
         code: error.keyword || '',
-        message: `${errorSourceDescription}${error.message || ''}${allowedParameters}${detectedAdditionalProperties}${unevaluatedProperty}`,
+        message: `${errorSourceDescription}${
+          error.message || ''
+        }${allowedParameters}${detectedAdditionalProperties}${unevaluatedProperty}`,
         severity,
       };
     })

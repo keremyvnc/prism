@@ -13,7 +13,6 @@ export function runPrismAndSetupWatcher(
   return createPrism(options).then(possibleServer => {
     if (possibleServer) {
       let server: IPrismHttpServer = possibleServer;
-      console.log('server var');
       const watcher = chokidar.watch(options.document, {
         // dosya değişikliklerini görmek için
         // See https://github.com/paulmillr/chokidar#persistence

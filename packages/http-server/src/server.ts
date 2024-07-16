@@ -242,12 +242,10 @@ export const createServer = (
 
   return {
     get prism() {
-      console.log('prism');
       return prism;
     },
 
     get logger() {
-      console.log('logger');
       return components.logger;
     },
 
@@ -267,7 +265,7 @@ export const createServer = (
       new Promise((resolve, reject) => {
         server.once('error', e => reject(e.message));
         server.listen(port, ...args, (err: unknown) => {
-          console.log('server.ts createServer server.listen');
+          // console.log('server.ts createServer server.listen');
           if (err) return reject(err);
           return resolve(addressInfoToString(server.address()));
         });
